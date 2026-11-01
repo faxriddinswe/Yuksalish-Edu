@@ -1,6 +1,6 @@
 # Yuksalish Edu
 
-**Holat: ishlab chiqilmoqda (WIP). Loyiha hali yakunlanmagan.** Bu repozitoriy ishlab chiqish jarayonidagi kod va yo‘riqnomalarni saqlaydi; tayyor production relizi emas. Joriy imkoniyatlar va qolgan ishlar: [loyiha holati](docs/project-status.md).
+ Bu repozitoriy ishlab chiqish jarayonidagi kod va yo‘riqnomalarni saqlaydi; tayyor production relizi emas. Joriy imkoniyatlar va qolgan ishlar: [loyiha holati](docs/project-status.md).
 
 Public repozitoriyga parollar, lokal baza, o‘quvchilarning sertifikat rasmlari/JSON ma’lumotlari, eksportlar va shaxsiy test hisobotlari kiritilmaydi. Ular lokalda saqlanadi. Faqat bo‘sh `.env` namunalari mavjud. Tekshirish tartibi: [GitHub va maxfiylik](docs/github-publishing.md).
 
