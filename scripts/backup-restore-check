@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Ishchi bazaga tegmasdan pg_dump arxivini alohida bazaga tiklab tekshiradi."""
+import json
+import os
+import subprocess
+import uuid
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]
+for line in (root/'.env.local').read_text().splitlines() if (root/'.env.local').exists() else []:
+    if line and not line.startswith('#') and '=' in line:
+        key,value=line.split('=',1)
+        os.environ.setdefault(key,value)
+import psycopg
+from psycopg import sql
+connection={'host':os.getenv('POSTGRES_HOST','127.0.0.1'),'port':os.getenv('POSTGRES_PORT','55432'),'user':os.getenv('POSTGRES_USER','yuksalish'),'password':os.getenv('POSTGRES_PASSWORD',''),'dbname':os.getenv('POSTGRES_DB','yuksalish')}
+target='restore_check_'+uuid.uuid4().hex[:12]
+folder=root/'.local/backups';folder.mkdir(mode=0o700,parents=True,exist_ok=True)
+archive=folder/(target+'.dump')
+flags=['-h',connection['host'],'-p',str(connection['port']),'-U',connection['user']]
+env={**os.environ,'PGPASSWORD':connection['password']}
+subprocess.run(['pg_dump',*flags,'-Fc','--no-owner','--no-acl','-f',str(archive),connection['dbname']],env=env,check=True)
+archive.chmod(0o600)
+def snapshot(database):
+    with psycopg.connect(**{**connection,'dbname':database}) as conn:
+        with conn.cursor() as cursor:
+            values={}
+            for table in ['students_student','education_enrollment','billing_invoice','billing_payment','billing_paymentallocation','audit_auditevent']:
+                cursor.execute(sql.SQL('SELECT count(*) FROM {}').format(sql.Identifier(table)))
+                values[table]=cursor.fetchone()[0]
+            cursor.execute('SELECT coalesce(sum(amount),0) FROM billing_payment WHERE status=%s',['POSTED'])
+            values['posted_total']=str(cursor.fetchone()[0])
+            return values
+with psycopg.connect(**{**connection,'dbname':'postgres'},autocommit=True) as admin:
+    admin.execute(sql.SQL('CREATE DATABASE {}').format(sql.Identifier(target)))
+    try:
+        subprocess.run(['pg_restore',*flags,'--exit-on-error','--single-transaction','--no-owner','--no-acl','-d',target,str(archive)],env=env,check=True)
+        source=snapshot(connection['dbname']);restored=snapshot(target)
+        if source!=restored:
+            raise SystemExit('Tiklangan ma’lumotlar manbaga mos kelmadi.')
+        result={'status':'PASSED','source_database':connection['dbname'],'isolated_restore_database':target,'snapshot':restored,'archive':str(archive.relative_to(root)),'note':'Ishchi baza almashtirilmadi. Test bazasi tekshiruvdan keyin o‘chirildi.'}
+        (root/'docs/backup-restore-result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+        print(json.dumps(result,ensure_ascii=False))
+    finally:
+        admin.execute(sql.SQL('DROP DATABASE {}').format(sql.Identifier(target)))

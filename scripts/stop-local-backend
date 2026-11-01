@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Faqat shu loyihaning 127.0.0.1:8000 Django development jarayonini to‘xtatadi."""
+import os
+import signal
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]
+for entry in Path('/proc').iterdir():
+    if not entry.name.isdigit():continue
+    try:
+        if entry.stat().st_uid!=os.getuid() or (entry/'cwd').resolve()!=root/'backend':continue
+        args=(entry/'cmdline').read_bytes().decode().split('\0')
+        if 'runserver' in args and '127.0.0.1:8000' in args:
+            os.kill(int(entry.name),signal.SIGTERM)
+            print('Loyihaning eski development backend jarayoni to‘xtatildi.')
+    except (FileNotFoundError,PermissionError,ProcessLookupError):
+        pass

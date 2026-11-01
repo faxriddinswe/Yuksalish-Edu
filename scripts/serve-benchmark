@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+import os
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]
+for line in (root/'.env.local').read_text().splitlines():
+    if line and not line.startswith('#') and '=' in line:
+        key,value=line.split('=',1);os.environ.setdefault(key,value)
+if not os.environ.get('POSTGRES_DB','').startswith('load_'):
+    raise SystemExit('Benchmark faqat alohida load_ bazasida ishlaydi. POSTGRES_DB ni ko‘rsating.')
+os.environ['DJANGO_SETTINGS_MODULE']='config.settings.base'
+os.chdir(root/'backend')
+os.execv(str(root/'.venv/bin/gunicorn'),['gunicorn','config.wsgi:application','--bind','127.0.0.1:8002','--workers','3','--threads','2','--timeout','60','--access-logfile','/tmp/yuksalish-benchmark-access.log'])

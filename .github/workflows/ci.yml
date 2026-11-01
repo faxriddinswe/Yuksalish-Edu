@@ -1,0 +1,75 @@
+name: Tekshiruvlar
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: yuksalish_ci
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U postgres' --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd 'redis-cli ping' --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      POSTGRES_DB: yuksalish_ci
+      POSTGRES_USER: postgres
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://127.0.0.1:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Vaqtinchalik test maxfiy qiymatlari
+        shell: bash
+        run: |
+          test_django_secret=$(openssl rand -hex 40)
+          test_demo_password=$(openssl rand -hex 20)
+          echo "::add-mask::$test_django_secret"
+          echo "::add-mask::$test_demo_password"
+          echo "DJANGO_SECRET_KEY=$test_django_secret" >> "$GITHUB_ENV"
+          echo "DEMO_PASSWORD=$test_demo_password" >> "$GITHUB_ENV"
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -r backend/requirements.lock
+      - run: npm ci --prefix frontend
+      - name: Public fayllar va maxfiy qiymatlar tekshiruvi
+        run: python scripts/check-public-files
+      - run: .venv/bin/ruff check backend
+      - run: scripts/backend check
+      - run: scripts/backend makemigrations --check --dry-run
+      - run: scripts/backend spectacular --validate --fail-on-warn --file /tmp/yuksalish-openapi.yaml
+      - run: scripts/test-backend --junitxml=../docs/backend-test-results.xml
+      - run: npm run lint --prefix frontend
+      - run: npm run typecheck --prefix frontend
+      - run: npm run test --prefix frontend
+      - run: npm run build --prefix frontend
+      - run: .venv/bin/python scripts/prepare-e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run e2e --prefix frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tekshiruv-natijalari
+          path: |
+            docs/backend-test-results.xml
+            docs/e2e-results.json
+          retention-days: 7

@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Faqat lokal Compose muhit faylini xavfsiz yaratadi."""
+from pathlib import Path
+import secrets
+root=Path(__file__).resolve().parents[1]
+target=root/'.env'
+if target.exists():
+    raise SystemExit('.env mavjud. Uning qiymatlari almashtirilmadi.')
+text=(root/'.env.example').read_text()
+for key in ['DJANGO_SECRET_KEY','POSTGRES_PASSWORD','DEMO_PASSWORD']:
+    text=text.replace(key+'=\n',key+'='+secrets.token_urlsafe(50 if key=='DJANGO_SECRET_KEY' else 24)+'\n')
+target.write_text(text)
+target.chmod(0o600)
+print('.env yaratildi. Maxfiy qiymatlar ekranga chiqarilmadi.')

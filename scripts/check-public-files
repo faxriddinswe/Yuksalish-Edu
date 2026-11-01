@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Check the Git upload set without printing any matching secret values."""
+
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PATTERNS = {
+    "private key": re.compile(
+        rb"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"
+    ),
+    "GitHub token": re.compile(
+        rb"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b"
+    ),
+    "AWS access key": re.compile(rb"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    "API secret": re.compile(
+        rb"\b(?:sk_live_[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0-9_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,})\b"
+    ),
+    "credential URL": re.compile(
+        rb"[a-z][a-z0-9+.-]*://[^\s/\"']+:[^\s/@\"']+@", re.IGNORECASE
+    ),
+}
+
+
+def git(*args, input=None):
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args], input=input, capture_output=True, check=False
+    )
+
+
+def local_secrets():
+    values = set()
+    sources = [
+        ROOT / name
+        for name in [".env", ".env.local", ".env.production", "frontend/.env.local"]
+    ]
+    entries = list(os.environ.items())
+    for path in sources:
+        if path.is_file():
+            entries.extend(
+                line.split("=", 1)
+                for line in path.read_text().splitlines()
+                if "=" in line and not line.lstrip().startswith("#")
+            )
+    for key, value in entries:
+        if re.search(
+            r"(?:PASSWORD|TOKEN|SECRET|SECRET_KEY|PRIVATE_KEY|API_KEY|ACCESS_KEY|DATABASE_URL)$",
+            key.strip(),
+            re.IGNORECASE,
+        ):
+            value = value.strip().strip("\"'")
+            if len(value) >= 8:
+                values.add(value.encode())
+    return values
+
+
+def main():
+    result = git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
+    if result.returncode:
+        print("Git fayllar ro‘yxatini o‘qib bo‘lmadi.", file=sys.stderr)
+        return 1
+    paths = sorted(set(result.stdout.split(b"\0")) - {b""})
+    ignored = git(
+        "check-ignore", "--no-index", "--stdin", "-z", input=b"\0".join(paths) + b"\0"
+    )
+    if ignored.returncode not in [0, 1]:
+        print("Git ignore tekshiruvi bajarilmadi.", file=sys.stderr)
+        return 1
+    failures = [
+        (os.fsdecode(path), "ignored file already tracked")
+        for path in ignored.stdout.split(b"\0")
+        if path
+    ]
+    secrets = local_secrets()
+    total = 0
+    for raw in paths:
+        name = os.fsdecode(raw)
+        path = ROOT / name
+        if path.is_symlink() or not path.resolve().is_relative_to(ROOT):
+            failures.append((name, "symlink or external path"))
+            continue
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        total += len(data)
+        if len(data) > 5 * 1024 * 1024:
+            failures.append((name, "oversized source file"))
+        binary_allowed = (
+            name.startswith("frontend/public/icons/")
+            or name == "frontend/tests/fixtures/content-test.png"
+        )
+        if b"\0" in data and not binary_allowed:
+            failures.append((name, "unreviewed binary file"))
+            continue
+        for label, pattern in PATTERNS.items():
+            if pattern.search(data):
+                failures.append((name, label))
+        if any(value in data for value in secrets):
+            failures.append((name, "local environment secret"))
+        if name in [".env.example", ".env.production.example"]:
+            for line in data.decode().splitlines():
+                if "=" in line and not line.lstrip().startswith("#"):
+                    key, value = line.split("=", 1)
+                    if (
+                        re.search(r"(?:PASSWORD|TOKEN|SECRET|KEY)$", key)
+                        and value.strip()
+                    ):
+                        failures.append((name, "nonempty example secret"))
+    if failures:
+        for name, reason in sorted(set(failures)):
+            print(f"BLOCKED {name}: {reason}", file=sys.stderr)
+        return 1
+    print(
+        f"Public fayllar tekshirildi: {len(paths)} fayl, {total} bayt. Maxfiy qiymat topilmadi."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
