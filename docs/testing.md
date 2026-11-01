@@ -69,7 +69,7 @@ Foydalanuvchi demo hajmini 100 ga tushirdi. Shuning uchun 1 000 ta yozuvli bench
 
 `backup-restore-check` haqiqiy custom-format dumpni alohida bazaga tiklaydi va son/summalarni solishtiradi. Ishchi baza o‘rniga tiklamaydi.
 
-GitHub Actions PostgreSQL17/Redis 8 bilan backend lint/check/migration/test, frontend lint/typecheck/unit/build va browser E2E’ni belgilaydi. Workflow fayli yaratilgan; GitHub’da ishga tushirilmagan. CI’dagi trust autentifikatsiya faqat vaqtinchalik izolatsiyalangan service bazasiga, production’ga qo‘llanmaydi.
+GitHub Actions PostgreSQL17/Redis 8 bilan backend lint/check/migration/test, frontend lint/typecheck/unit/build va browser E2E’ni bajaradi. Public repozitoriyga kod yuklanganda workflow ishga tushadi; amaldagi natijani [GitHub Actions](https://github.com/faxriddinswe/Yuksalish-Edu/actions) orqali tekshiring. Lokal test natijasi GitHub CI natijasi sifatida ko‘rsatilmaydi. CI’dagi trust autentifikatsiya faqat vaqtinchalik izolatsiyalangan service bazasiga, production’ga qo‘llanmaydi.
 
 ## Kontent va responsive regressiya
 
